@@ -12,6 +12,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -record(person, {name=rado, weight=80}).
 -author("Bc. Radoslav Zachar").
+-author("Bc. Jakub Calik").
 -date("1.4.2013").
 
 %%% Client API
