@@ -57,7 +57,7 @@ handle_call(terminate, _From, Server) ->
 
 handle_cast(_, Server) ->
 	io:format("empty cast!~n",[]),
-	{noreply, []}.
+	{noreply, Server}.
 
 handle_info(Msg, Server) ->
 	io:format("Unexpected message: ~p~n",[Msg]),

@@ -15,97 +15,52 @@
 
 %%% Client API
 create(ParentPid) -> 
-	{ok, MyPid} = gen_server:start_link(?MODULE, [ParentPid], []),
+	{ok, MyPid} = gen_server:start_link(?MODULE, ParentPid, []),
 	MyPid.
+
+sendtouser(MyPid, ToNick, Msg) ->
+	% ToPid = getPid(ToNick), 
+	gen_server:call(MyPid, {message, MyPid, ToNick, Msg}).
 
 die(MyPid) ->
 	gen_server:call(MyPid, terminate).
 
 %%% Server functions
-init([]) -> {ok, []}. %% no treatment of info here!
+init(ParentPid) -> {ok, make_worker(0, ParentPid, [])}. %% no treatment of info here!
  
-handle_call({enter, NewPerson}, _From, Elevator) ->
-	TotalWeight = weight_in_elevator(Elevator) + NewPerson#person.weight, 
-	if TotalWeight > 300 ->
-			% person cant enter an elevator due to weight limit
-			io:format("Person cant fit to this elevator. Please take all persons first or create another elevator!~n",[]),
-			NewElevator = Elevator;
-		true ->
-			NewElevator = insert(Elevator, NewPerson)		
-	end,
-	io:format("Actual total weight in elevator: ~p~n",[weight_in_elevator(NewElevator)]),
-	{reply, NewElevator, NewElevator};
-handle_call({leave, Person}, _From, Elevator) ->
-	IsInElevator = isin(Elevator,Person),
-	if IsInElevator == true ->
-			io:format("Person ~p left this elevator.~n",[Person#person.name]),
-			NewElevator = delete(Elevator, Person);
-		true ->
-			io:format("Person ~p is not is elevator!~n",[Person#person.name]),
-			NewElevator = Elevator
-	end,
-	io:format("Actual total weight in elevator: ~p~n",[weight_in_elevator(NewElevator)]),
-	{reply, NewElevator, NewElevator};
-handle_call(terminate, _From, Elevator) ->
-	{stop, normal, ok, Elevator}.	
+% receive message
+handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when ToPid =:= Worker#worker.mypid ->
+	% todo = zistit nick pidu odkial prisla sprava (opytat sa servera ak nemam ulozeneho)
+	% FromNick = getNick(FromPid),
+	FromNick = noname,
+	io:format("Received msg (from ~p): ~p~n",[FromNick,Msg]),
+	{reply, Worker, Worker};
+% send message
+handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when FromPid =:= Worker#worker.mypid ->
+	% todo = vytiahnut pid z mojej databazy
+	% ToPid = getPid(ToPid),
+	ToPid = 5,
+	%gen_server:call(ToPid, {message, MyPid, ToPid, Msg}),
+	io:format("Msg sent (to ~p)! ~p~n",[ToPid, Msg]),
+	{reply, Worker, Worker};
+handle_call(terminate, _From, Worker) ->
+	{stop, normal, ok, Worker}.	
 
-handle_cast({take}, Elevator) ->
-	[io:format("Person ~p was taken.~n",[P#person.name]) || P <- Elevator],
-	io:format("This elevator is empty now!~n",[]),
-	{noreply, []}.
-
-handle_info(Msg, Elevator) ->
+handle_cast(_, Worker) ->
+	io:format("empty cast!~n",[]),
+	{noreply, Worker}.
+	
+handle_info(Msg, Worker) ->
 	io:format("Unexpected message: ~p~n",[Msg]),
-	{noreply, Elevator}.
+	{noreply, Worker}.
 
-terminate(normal, Elevator) ->
-	[io:format("Person ~p was taken.~n",[P#person.name]) || P <- Elevator],
-	io:format("This elevator cant take people anymore!~n",[]),
+terminate(normal, Worker) ->
+	io:format("Worker is shutting down...!~n",[]),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %%% Private functions
-make_person(Name, Weight) ->
-	#person{name=Name, weight=Weight}.
-
-% zistime momentalnu zataz vytahu
-weight_in_elevator(Elevator) ->
-	count_weight_in_elevator(Elevator, 0).
-	
-count_weight_in_elevator([], Total) ->
-	Total;
-count_weight_in_elevator([H|T], Total) ->
-	count_weight_in_elevator(T, Total + H#person.weight).
-
-% zistime, ci osoba je vo vytahu
-isin([],_) ->
-	false;
-isin([P|_], Person) when P#person.weight > Person#person.weight ->
-	false;
-isin([P|_], Person) when P =:= Person ->
-	true;
-isin([_|T], Person) ->
-	isin(T, Person).
-  
-% pridame osobu do vytahu (zoradujeme ich podla vahy:))
-insert(Elevator, Person) ->
-	insert(Elevator, Person , []).
-  
-insert([P|T], Person, Acc) when P#person.weight < Person#person.weight ->
-	insert(T, Person, Acc ++ [P]);
-insert(Elevator, Person, Acc) ->
-	Acc ++ [Person] ++ Elevator.
-
-% odobereme osobu z vytahu
-delete(Elevator, Ele) ->
-  delete(Elevator, Ele, []).
-  
-delete([], _, Acc) ->
-  Acc;
-delete([P|T], Person, Acc) when P =:= Person ->
-  Acc ++ T;
-delete([P|T], Person, Acc) ->
-  delete(T, Person, Acc ++ [P]).
-    
+make_worker(MyPid, ServerPid, Users) ->
+	#worker{mypid=MyPid, spid=ServerPid, users=Users}.
