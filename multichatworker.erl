@@ -1,4 +1,4 @@
-------module(multichatworker).
+-module(multichatworker).
 -behaviour(gen_server).
 -export([create/1,
 		sendtouser/3,
