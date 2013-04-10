@@ -4,7 +4,7 @@
 -date("1.4.2013").
 -record(user, {nick, pid}).
 -record(room, {name, pid}).
--record(server,  {users=[], rooms=[]}).
+-record(server,  {users=[], rooms=[], backup}).
 -export([start/0, 
  login/2,
 %		whereIsNick/2, whereIsRoom/2,
@@ -46,11 +46,17 @@ init([]) -> {ok, make_server([],[])}. %% no treatment of info here!
 handle_call({login, Nick}, _From, Server) ->
 	% create worker for user
 	MyPid = self(), 
-	{ok, WorkerPid} = gen_server:start_link(multichatworker, [MyPid], []),
-	NewUsers = [make_user(Nick,WorkerPid)|Server#server.users],
-	NewServer = make_server(NewUsers,Server#server.rooms),
-	io:format("LOGGED ~n"),
-	{reply, NewServer, NewServer};
+	WorkerPid = check_workerCreated(gen_server:start_link(multichatworker, [MyPid], [])),
+	if WorkerPid =:= false ->
+		   		%worker error
+				{reply, false, Server};
+			true ->
+				%worker ok -> register new user
+				NewUsers = [make_user(Nick,WorkerPid)|Server#server.users],
+				NewServer = make_server(NewUsers,Server#server.rooms),
+				io:format("MAIN LOGGED ~n"),
+				{reply, WorkerPid, NewServer}
+	end;
 handle_call(rooms, _From, Server) ->
 	[io:format("Room '~p' (on ~p)~n",[R#room.name, R#room.pid]) || R <- Server#server.rooms],
 	{reply, Server, Server};
@@ -82,6 +88,10 @@ handle_info(Msg, Server) ->
 
 terminate(normal, _) ->
 	io:format("server is off!~n",[]),
+	ok;
+terminate(_, _) ->
+  	io:format("MASTER Unexpected shutdown!"),
+	% WAKE BACKUP
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -94,6 +104,12 @@ make_room(Name, Pid) ->
 	#room{name=Name, pid=Pid}.
 make_server(Users, Rooms) ->
 	#server{users=Users, rooms=Rooms}.
+
+check_workerCreated({ok,WorkerPid}) ->
+	WorkerPid;
+check_workerCreated(_) ->
+	false.
+
 
 % obsahuje prvok
 getUserPid(_, []) ->
