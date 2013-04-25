@@ -4,7 +4,7 @@
 -date("1.4.2013").
 -record(user, {nick, pid}).
 -record(room, {name, pid}).
--record(worker, {mypid, mainpid, users}).
+-record(worker, {mypid, mainpid, users, rooms}).
 -export([
 %		create/1,
 		sendtouser/3,
@@ -26,7 +26,7 @@ die(MyPid) ->
 %%% Server functions
 init(ParentPid) ->
 	MyPid = self(), 
-	{ok, make_worker(MyPid, ParentPid, [])}. 
+	{ok, make_worker(MyPid, ParentPid, [], [])}. 
  
 % receive message
 handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when ToPid =:= Worker#worker.mypid ->
@@ -43,6 +43,16 @@ handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when FromPid =:= Work
 	%gen_server:call(ToPid, {message, MyPid, ToPid, Msg}),
 	io:format("Msg sent (to ~p)! ~p~n",[ToPid, Msg]),
 	{reply, Worker, Worker};
+	
+handle_call({make_room,RoomName}, _From, Worker) ->
+	Room = make_room(RoomName),
+	io:format("Room createeeed"),
+	gen_server:call(multichatapp,{newroomonpid, RoomName, Worker#worker.mypid}),
+	{reply, ok, make_worker(Worker#worker.mypid,
+							Worker#worker.mainpid,
+							Worker#worker.users,
+							[Worker#worker.rooms|Room])};
+
 handle_call(terminate, _From, Worker) ->
 	{stop, normal, ok, Worker}.	
 
@@ -62,5 +72,9 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %%% Private functions
-make_worker(MyPid, ServerPid, Users) ->
-	#worker{mypid=MyPid, mainpid=ServerPid, users=Users}.
+make_room(Name) ->
+	io:format("NEW room ~n",[]),
+	#room{name=Name, pid=self()}.
+
+make_worker(MyPid, ServerPid, Users, Rooms) ->
+	#worker{mypid=MyPid, mainpid=ServerPid, users=Users, rooms=Rooms}.

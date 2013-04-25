@@ -58,9 +58,10 @@ handle_call({login, Nick}, _From, Server) ->
 				{reply, WorkerPid, NewServer}
 	end;
 handle_call(rooms, _From, Server) ->
-	[io:format("Room '~p' (on ~p)~n",[R#room.name, R#room.pid]) || R <- Server#server.rooms],
-	{reply, Server, Server};
+	AllRooms = [io:format("Room '~p' (on ~p)~n",[R#room.name, R#room.pid]) || R <- Server#server.rooms],
+	{reply, AllRooms, Server};
 handle_call({newroomonpid, Name, OnPid}, _From, Server) ->
+	io:format("Registering~n"),
 	NewServer = make_server(Server#server.users,[make_room(Name, OnPid)|Server#server.rooms]), 
 	io:format("New room registered~n"),
 	{reply, NewServer, NewServer};
