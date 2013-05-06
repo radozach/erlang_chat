@@ -13,6 +13,8 @@
 
 -record(client, {nick, worker}).
 
+-record(room, {name, pid}).
+
 
 %%% Client API
 create() -> 
@@ -30,8 +32,8 @@ login(Pid, Nick) ->
 	end.
 	
 rooms(Pid) ->
-	Rooms = gen_server:call(multichatapp, rooms),
-	[io:format("Room '~p' (on ~p)~n",[R#room.name, R#room.pid]) || R <- Rooms].
+	gen_server:call(multichatapp, rooms).
+	%[io:format("Room '~p' (on ~p)~n",[R#room.name, R#room.pid]) || R <- Rooms].
 
 make_room(Pid, Name) ->
 	gen_server:call(Pid,{make_room, Name}).
