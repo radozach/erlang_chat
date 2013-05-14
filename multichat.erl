@@ -2,12 +2,16 @@
 -behaviour(gen_server).
 -author("Bc. Radoslav Zachar, Bc. Jakub Calik").
 -date("1.4.2013").
+
+
 -record(user, {nick, pid}).
 -record(room, {name, pid}).
 -record(worker, {limit=2, pid}).
 -record(server,  {users=[], rooms=[], workers=[], backup}).
+
+
 -export([start/0, 
- login/2,
+		login/2,
 %		whereIsNick/2, whereIsRoom/2,
 %		these fnctions cant be part of api - only worker will call request!
 		users/1, rooms/1,
@@ -46,7 +50,7 @@ init([]) -> {ok, make_server([],[],[])}. %% no treatment of info here!
  
 handle_call({login, Nick}, _From, Server) ->
 	% create worker for user
-	WorkerPid = find_worker(Server#server.workers),
+	WorkerPid = find_worker(Server#server.workers,Server),
 	if WorkerPid =:= false ->
 		   		%worker not found
 		   		MyPid = self(), 
@@ -74,7 +78,7 @@ handle_call({newroomonpid, Name, OnPid}, _From, Server) ->
 handle_call({whereroom, RoomName}, _From, Server) ->
 	OnPid = getRoomPid(RoomName, Server#server.rooms),
 	io:format("room '~p' is on ~p~n",[RoomName, OnPid]), 
-	{reply, Server, Server};
+	{reply, OnPid, Server};
 handle_call({wherenick, Nick}, _From, Server) ->
 	OnPid = getUserPid(Nick, Server#server.users),
 	io:format("user '~p' is on ~p~n",[Nick, OnPid]), 
@@ -104,13 +108,18 @@ terminate(_, _) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
+
+
 %%% Private functions
 make_user(Nick, Pid) ->
 	#user{nick=Nick, pid=Pid}.
+	
 make_room(Name, Pid) ->
 	#room{name=Name, pid=Pid}.
+	
 make_server(Users, Rooms,Workers) ->
 	#server{users=Users, rooms=Rooms, workers=Workers}.
+	
 make_worker(Limit,Pid) ->
 	#worker{limit=Limit,pid=Pid}.
 
@@ -135,11 +144,20 @@ getRoomPid(Name, [Room|_]) when Room#room.name =:= Name ->
 getRoomPid(Name, [_|T]) ->
   getRoomPid(Name, T).
   
-find_worker([]) ->
+find_worker([],_) ->
 	false;
-find_worker([H|_])->
-	H#worker.pid.
+find_worker([H|T],S)->
+	C = users_on_worker(S#server.users,H#worker.pid,0),
+	if H#worker.limit > C ->
+			H#worker.pid;
+		true -> 
+			find_worker(T,S)
+	end.
 	
-
-
+users_on_worker([],_,C) ->
+	C;
+users_on_worker([U|T],WP,C) ->
+	if U#user.pid =:= WP -> users_on_worker(T,WP,C+1);
+		true			 -> users_on_worker(T,WP,C)
+	end.
 

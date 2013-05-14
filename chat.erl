@@ -5,20 +5,23 @@
 -export([create/0, die/1,
 		login/2,
 		rooms/1,
+		users/1,
 		enter/2, exit/0, make_room/2,	
-		msg/2
+		msg/3, send/2
 		]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 
--record(client, {nick, worker}).
+-record(client, {nick, worker, room_pid}).
 
--record(room, {name, pid}).
+
 
 
 %%% Client API
 create() -> 
-	gen_server:start_link(?MODULE, [], []).
+	Resp = gen_server:start_link(?MODULE, [], []),
+	{ok,Pid} = Resp,
+	Pid.
 
 login(Pid, Nick) -> 
 	Resp = gen_server:call(multichatapp, {login, Nick}),
@@ -41,10 +44,16 @@ make_room(Pid, Name) ->
 enter(Pid, RoomName) ->
 	gen_server:call(Pid, {enter, RoomName}).
 	
+users(Pid) ->
+	gen_server:call(multichatapp, users).
+
 exit() ->
 	todo.
 
-msg(To, Msg) ->
+send(Pid,Msg) ->
+	todo.
+
+msg(Pid, To, Msg) ->
 	todo.
  
 die(Pid) ->
@@ -59,13 +68,14 @@ handle_call({make_room, RoomName}, _From, Client) ->
 	Resp = gen_server:call(Client#client.worker, {make_room,RoomName}),
 	{reply, Resp, Client}; 
 handle_call({enter, RoomName}, _From, Client) ->
-	io:format("you are now in '~p' room!~n",[RoomName]),
-	{reply, Client, Client};
+	Resp = gen_server:call(Client#client.worker, {enter_room,RoomName,Client#client.nick}),
+	NewClient = make_client(Client#client.nick,Client#client.worker,Resp),
+	{reply, Resp, NewClient}; 
 handle_call(terminate, _From, Client) ->
 	{stop, normal, ok, Client}.	
 
 handle_cast({save_worker, Nick, WorkerPid}, _Client) ->
-	NewClient = make_client(Nick,WorkerPid),
+	NewClient = make_client(Nick,WorkerPid,0),
 	io:format("Worker assigned!~n",[]),
 	{noreply, NewClient}.
 
@@ -82,9 +92,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%% Private functions
 make_client() ->
-	#client{nick=empty, worker=empty}.
-make_client(Nick, WorkerPid) ->
-	#client{nick=Nick, worker=WorkerPid}.
+	#client{nick=empty, worker=empty, room_pid=0}.
+make_client(Nick, WorkerPid, RoomPid) ->
+	#client{nick=Nick, worker=WorkerPid, room_pid=RoomPid}.
 
 check_login(false) ->
 	false;

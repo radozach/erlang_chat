@@ -3,7 +3,7 @@
 -author("Bc. Radoslav Zachar, Bc. Jakub Calik").
 -date("1.4.2013").
 -record(user, {nick, pid}).
--record(room, {name, pid}).
+-record(room, {name, pid, users}).
 -record(worker, {mypid, mainpid, users, rooms}).
 -export([
 %		create/1,
@@ -44,17 +44,46 @@ handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when FromPid =:= Work
 	io:format("Msg sent (to ~p)! ~p~n",[ToPid, Msg]),
 	{reply, Worker, Worker};
 	
+handle_call({enter_room,RoomName,UserNick}, _From, Worker) ->
+	R = get_room(Worker,RoomName),
+	if R =:= false ->
+			
+			RoomPid = gen_server:call(multichatapp,{whereroom,RoomName}),
+			NewWorker = Worker;
+		true ->
+			RoomPid = R#room.pid,
+			NewWorker = Worker
+	end,
+	io:format("Room at ~p~n",[RoomPid]),
+	gen_server:cast(RoomPid,{user_entered,RoomName,UserNick}),
+	{reply, RoomPid, NewWorker};
+	
+
+							
 handle_call({make_room,RoomName}, _From, Worker) ->
-	Room = make_room(RoomName),
+	Room = make_room(RoomName,[]),
 	io:format("Room createeeed"),
 	gen_server:call(multichatapp,{newroomonpid, RoomName, Worker#worker.mypid}),
 	{reply, ok, make_worker(Worker#worker.mypid,
 							Worker#worker.mainpid,
 							Worker#worker.users,
-							[Worker#worker.rooms|Room])};
+							[Room|Worker#worker.rooms])};
+
 
 handle_call(terminate, _From, Worker) ->
 	{stop, normal, ok, Worker}.	
+
+handle_cast({user_entered,RoomName,UserNick},Worker) ->
+	io:format("tu ~p~n",[self()]),
+	Room = find_room(Worker#worker.rooms,RoomName),
+	io:format("Room ~p~n",[Room]),
+	NewRoom = make_room(Room#room.name,[UserNick|Room#room.users]),
+	NewRooms = update_room(Worker#worker.rooms,[],NewRoom),
+	io:format("Worker register user in room~n"),
+	{noreply,make_worker(Worker#worker.mypid,
+							Worker#worker.mainpid,
+							Worker#worker.users,
+							NewRooms)};
 
 handle_cast(_, Worker) ->
 	io:format("empty cast!~n",[]),
@@ -72,9 +101,33 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %%% Private functions
-make_room(Name) ->
+make_room(Name,Users) ->
 	io:format("NEW room ~n",[]),
-	#room{name=Name, pid=self()}.
+	#room{name=Name, pid=self(), users=Users}.
+
+update_room([],A,_) ->
+	A;
+update_room([H|T],A,R) when H#room.name =:= R#room.name ->
+	update_room(T,[R|A],R);
+update_room([H|T],A,R) ->
+	update_room(T,[H|A],R).
 
 make_worker(MyPid, ServerPid, Users, Rooms) ->
 	#worker{mypid=MyPid, mainpid=ServerPid, users=Users, rooms=Rooms}.
+	
+
+get_room(Worker,RM) ->
+	find_room(Worker#worker.rooms,RM).
+	
+
+find_room([],_) ->
+	false;
+find_room([R|_],RM) when R#room.name =:= RM ->
+	R;
+find_room([_|T],RM) ->
+	find_room(T,RM).
+
+	
+
+
+
