@@ -11,8 +11,7 @@
 
 -export([start/0, 
 		login/2,
-%		whereIsNick/2, whereIsRoom/2,
-%		these fnctions cant be part of api - only worker will call request!
+%		whereIsNick/2, whereIsRoom/2,  % not in api - only worker will call request!
 		users/1, rooms/1,
 		stop/1
 		]).
@@ -20,10 +19,11 @@
 
 %%% Client API
 start() ->
-	%gen_server:start_link(?MODULE, [], []). 
 	{ok, Pid} = gen_server:start_link(?MODULE, [], []),
-	register(multichatapp, Pid),
+	register(multichatapp, Pid), 
 	io:format("'multichatapp' is registered now! ~n"),
+	Ref = erlang:monitor(process, multichatapp),
+	io:format("'multichatapp' is monitored now ~p! ~n",[Ref]),
 	{ok, Pid}.
 
 login(Pid, Nick) ->
@@ -46,25 +46,32 @@ stop(Pid) ->
 
 %%% Server functions
 init([]) -> {ok, make_server([],[],[])}. %% no treatment of info here!
- 
+  
 handle_call({login, Nick}, _From, Server) ->
-	% create worker for user
-	WorkerPid = find_worker(Server#server.workers,Server),
-	if WorkerPid =:= false ->
-			%worker not found
-			{ok, NewWorker} = gen_server:start_link(multichatworker, [self()], []),
-			NewServer = make_server(Server#server.users, 
-						Server#server.rooms, 
-						[make_worker(2, NewWorker)|Server#server.workers]),
-			io:format("MASTER: New worker created!~n");
+	MyPid = logged(Server#server.users, Nick),
+	if MyPid =:= false ->
+			% i am not logged already
+			WorkerPid = find_worker(Server#server.workers, Server),
+			if WorkerPid =:= false ->
+					% we need new worker
+					{ok, NewWorker} = gen_server:start_link(multichatworker, [self()], []),
+					NewServer = make_server([make_user(Nick, NewWorker)|Server#server.users],
+											Server#server.rooms, 
+											[make_worker(2, NewWorker)|Server#server.workers]),
+					io:format("MASTER: New worker created!~n");
+				true ->
+					NewServer = make_server([make_user(Nick, WorkerPid)|Server#server.users],
+											Server#server.rooms, 
+											Server#server.workers),
+					NewWorker = WorkerPid
+			end,
+			io:format("MASTER: User ~p logged! ~n", [Nick]);
 		true ->
-			NewServer = Server,
-			NewWorker = WorkerPid
+			io:format("MASTER: I am already logged!~n"),
+			NewWorker = MyPid,
+			NewServer = Server
 	end,
-	io:format("MASTER: User ~p logged! ~n", [Nick]),
-	{reply, NewWorker, make_server(	[make_user(Nick, NewWorker)|NewServer#server.users], 
-									NewServer#server.rooms, 
-									NewServer#server.workers)};
+	{reply, NewWorker, NewServer};
 
 handle_call(users, _From, Server) ->
 	AllUsers = [io:format("User '~p' (on ~p)~n",[U#user.nick, U#user.pid]) || U <- Server#server.users],
@@ -91,8 +98,12 @@ handle_call({wherenick, Nick}, _From, Server) ->
 handle_call(terminate, _From, Server) ->
 	{stop, normal, ok, Server}.	
 
+handle_cast({'DOWN', R, _, _, _}, Server) ->
+	io:format("MASTER: DOWN message...!~n"),
+	start(),
+	{noreply, Server};
 handle_cast(_, Server) ->
-	io:format("MASTER: empty cast!~n",[]),
+	io:format("MASTER: empty cast!~n"),
 	{noreply, Server}.
 handle_info(Msg, Server) ->
 	io:format("MASTER: Unexpected message: ~p~n",[Msg]),
@@ -103,7 +114,7 @@ terminate(normal, _) ->
 	ok;
 terminate(_, _) ->
   	io:format("MASTER: terminate~n"),
-	% WAKE BACKUP
+	start(),
 	ok.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
@@ -127,6 +138,13 @@ getRoomPid(Name, [Room|_]) when Room#room.name =:= Name ->
 getRoomPid(Name, [_|T]) ->
 	getRoomPid(Name, T).
   
+logged([],_) ->
+	false;
+logged([H|T], UserNick) when H#user.nick =:= UserNick ->
+	H#user.pid;
+logged([_|T], UserNick) ->
+	logged(T, UserNick).	
+
 find_worker([], _) -> false;
 find_worker([H|T], S)->
 	C = users_on_worker(S#server.users, H#worker.pid, 0),
