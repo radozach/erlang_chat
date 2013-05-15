@@ -2,9 +2,12 @@
 -behaviour(gen_server).
 -author("Bc. Radoslav Zachar, Bc. Jakub Calik").
 -date("1.4.2013").
+
+-record(msg, {ufrom, uto, text}).
 -record(user, {nick, pid}).
--record(room, {name, pid, users}).
+-record(room, {name, pid, users, msgs=[]}).
 -record(worker, {mypid, mainpid, backup, users, rooms}).
+
 -export([
 %		create/1,     % is called by mainserver
 		sendtouser/3,
@@ -51,7 +54,7 @@ handle_call({enter_room, RoomName, UserNick}, _From, Worker) ->
 	{reply, RoomPid, Worker};
 							
 handle_call({new_room, RoomName}, _From, Worker) ->
-	Room = make_room(RoomName, self(), []),
+	Room = make_room(RoomName, self(), [], []),
 	gen_server:call(multichatapp, {newroomonpid, RoomName, Worker#worker.mypid}),
 	{reply, ok, make_worker(Worker#worker.mypid,
 							Worker#worker.mainpid,
@@ -62,16 +65,37 @@ handle_call({new_room, RoomName}, _From, Worker) ->
 handle_call(terminate, _From, Worker) ->
 	{stop, normal, ok, Worker}.	
 
+handle_cast({register_new_client, CPid,Nick}, Worker) ->
+	U = make_user(Nick,CPid),
+	NWorker = make_worker(Worker#worker.mypid,
+							Worker#worker.mainpid,
+							Worker#worker.backup,
+							[U|Worker#worker.users],
+							Worker#worker.rooms),
+	io:format("WORKER: register user ... ~p~n",[NWorker]),
+	{noreply, NWorker};
+
 handle_cast({add_user_to_room, RoomName, User}, Worker) ->
 	%io:format("tu ~p~n", [self()]),
 	Room = find_room(Worker#worker.rooms, RoomName),
-	NewRoom = make_room(Room#room.name, self(), [Room#room.users|User]),
+	NewRoom = make_room(Room#room.name, self(), [User|Room#room.users], Room#room.msgs),
 	io:format("User ~p entered ~p room~n", [User#user.nick, RoomName]),
 	{noreply, make_worker(Worker#worker.mypid,
 							Worker#worker.mainpid,
 							Worker#worker.backup,
 							Worker#worker.users,
 							update_room(Worker#worker.rooms, NewRoom))};
+							
+handle_cast({room_msg,Nick,RName,Msg}, Worker) ->
+	io:format("Room Msg incoming to ~p~n",[Worker]),
+	Room = find_room(Worker#worker.rooms,RName),
+	io:format("Room Msg incoming to ~p~n",[Room]),
+	NRoom = add_room_msg(Room,make_msg(Nick,room,Msg)),
+	{noreply, make_worker(Worker#worker.mypid,
+							Worker#worker.mainpid,
+							Worker#worker.backup,
+							Worker#worker.users,
+							update_room(Worker#worker.rooms, NRoom))};
 
 handle_cast(_, Worker) ->
 	io:format("empty cast!~n", []),
@@ -97,17 +121,31 @@ make_worker(MyPid, ServerPid, Backup, Users, Rooms) ->
 make_user(Nick, Pid) ->
 	#user{nick=Nick, pid=Pid}.
 	
-make_room(Name, Pid, Users) ->
-	#room{name=Name, pid=Pid, users=Users}.
+make_room(Name, Pid, Users, Msgs) ->
+	#room{name=Name, pid=Pid, users=Users, msgs=Msgs}.
+	
+make_msg(From,To,Text) ->
+	#msg{ufrom=From, uto=To, text=Text}.
 
 update_room(List, Room) ->
 	update_room(List, [], Room).
 	
 update_room([], Acc, _) -> Acc;
 update_room([H|T], Acc, Room) when H#room.name =:= Room#room.name ->
-	[[Acc|Room]|T];
+	[Room|Acc] ++ T;
 update_room([H|T], Acc, Room) ->
-	update_room(T, [Acc|H], Room).
+	update_room(T, [H|Acc], Room).
+
+add_msg_list([],M) ->
+	[M];
+add_msg_list(L,M) ->
+	L ++ [M].
+
+add_room_msg(R,Msg) ->
+	#room{name=R#room.name, 
+			pid=R#room.pid, 
+			users=R#room.users,
+			msgs = add_msg_list(R#room.msgs,Msg)}.
 
 find_room([],_) ->
 	false;

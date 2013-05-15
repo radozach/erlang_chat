@@ -46,6 +46,7 @@ stop(Pid) ->
 
 %%% Server functions
 init([]) -> {ok, make_server([],[],[])}. %% no treatment of info here!
+<<<<<<< HEAD
   
 handle_call({login, Nick}, _From, Server) ->
 	MyPid = logged(Server#server.users, Nick),
@@ -66,12 +67,33 @@ handle_call({login, Nick}, _From, Server) ->
 					NewWorker = WorkerPid
 			end,
 			io:format("MASTER: User ~p logged! ~n", [Nick]);
+=======
+ 
+handle_call({login, Nick}, From, Server) ->
+	% create worker for user
+	WorkerPid = find_worker(Server#server.workers,Server),
+	if WorkerPid =:= false ->
+			%worker not found
+			{ok, NewWorker} = gen_server:start_link(multichatworker, [self()], []),
+			NewServer = make_server(Server#server.users, 
+						Server#server.rooms, 
+						[make_worker(2, NewWorker)|Server#server.workers]),
+			io:format("MASTER: New worker created!~n");
+>>>>>>> worker room msgs
 		true ->
 			io:format("MASTER: I am already logged!~n"),
 			NewWorker = MyPid,
 			NewServer = Server
 	end,
+<<<<<<< HEAD
 	{reply, NewWorker, NewServer};
+=======
+	gen_server:cast(NewWorker,{register_new_client, From,Nick}),
+	io:format("MASTER: User ~p logged! ~n", [Nick]),
+	{reply, NewWorker, make_server(	[make_user(Nick, NewWorker)|NewServer#server.users], 
+									NewServer#server.rooms, 
+									NewServer#server.workers)};
+>>>>>>> worker room msgs
 
 handle_call(users, _From, Server) ->
 	AllUsers = [io:format("User '~p' (on ~p)~n",[U#user.nick, U#user.pid]) || U <- Server#server.users],
