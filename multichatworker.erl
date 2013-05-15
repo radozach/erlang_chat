@@ -105,10 +105,19 @@ handle_cast({message, ToNick, Msg}, Worker) ->
 handle_cast({notif_room,Nick,Room}, Worker) ->
 	U = self_find_client(Worker#worker.users,Nick),
 	io:format("WORKER: NewRoom FOR ~p~n",[U]),
+<<<<<<< HEAD
 	if U ->
 		gen_server:cast(U#user.pid,{notif_room_update, Room})
 	end,
 	{noreply,Worker};
+=======
+	if U =:= false->
+			{noreply,Worker};
+		true ->	
+			gen_server:cast(U#user.pid,{notif_room_update, Room}),
+			{noreply,Worker}
+	end;
+>>>>>>> room msgs OK
 
 handle_cast(_, Worker) ->
 	io:format("empty cast!~n"),
