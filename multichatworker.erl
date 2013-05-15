@@ -83,12 +83,14 @@ handle_cast({room_msg,Nick,RName,Msg}, Worker) ->
 	Room = find_room(Worker#worker.rooms,RName),
 	io:format("Room Msg incoming to ~p~n",[Room]),
 	NRoom = add_room_msg(Room,make_msg(Nick,room,Msg)),
+	notify_room(NRoom),
 	{noreply, make_worker(Worker#worker.mypid,
 							Worker#worker.mainpid,
 							Worker#worker.backup,
 							Worker#worker.users,
 							update_room(Worker#worker.rooms, NRoom))};
 							
+<<<<<<< HEAD
 handle_cast({message, ToNick, Msg}, Worker) ->
 	ToPid = getPid(Worker#worker.users, ToNick),
 	if ToPid =:= false ->
@@ -98,6 +100,11 @@ handle_cast({message, ToNick, Msg}, Worker) ->
 			gen_server:cast(ToPid, {message, Msg})
 	end,
 	{noreply, Worker};
+=======
+handle_cast({notif_room,Nick,Room}, Worker) ->
+	io:format("WORKER: NewRoom MSG ~p~n",[Room]),
+	{noreply,Worker};
+>>>>>>> new room msg notification
 
 handle_cast(_, Worker) ->
 	io:format("empty cast!~n"),
@@ -163,7 +170,13 @@ find_room([R|_], RoomName) when R#room.name =:= RoomName ->
 find_room([_|T], RoomName) ->
 	find_room(T, RoomName).
 
+notify_room_users([],Room) ->
+	ok;
+notify_room_users([U|T],Room) ->
+	gen_server:cast(U#user.pid,{notif_room,U#user.nick,Room}),
+	notify_room_users(T,Room).
 	
-
+notify_room(Room) ->
+	notify_room_users(Room#room.users,Room).
 
 
