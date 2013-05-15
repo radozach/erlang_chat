@@ -100,7 +100,7 @@ handle_call(terminate, _From, Client) ->
 
 
 handle_cast({notif_room_update, Room}, Client) ->
-	io:format("CLIENT: Room msgs:~n~p~n",Room#),
+	io:format("CLIENT: Room msgs:~n~p~n",Room#room.msgs),
 	{noreply, Client};
 
 handle_cast({save_worker, Nick, WorkerPid}, _Client) ->

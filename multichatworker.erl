@@ -102,7 +102,7 @@ handle_cast({message, ToNick, Msg}, Worker) ->
 	{noreply, Worker};
 =======
 handle_cast({notif_room,Nick,Room}, Worker) ->
-	U = self_find_client(Worker#worker.users),
+	U = self_find_client(Worker#worker.users,Nick),
 	io:format("WORKER: NewRoom FOR ~p~n",[U]),
 	if U ->
 		gen_server:cast(U#user.pid,{notif_room_update, Room})
@@ -176,7 +176,7 @@ find_room([_|T], RoomName) ->
 	
 self_find_client([],Nick) ->
 	false;
-self_find_client([U|_],Nick) where U#user.nick =:= Nick ->
+self_find_client([U|_],Nick) when U#user.nick =:= Nick ->
 	U;
 self_find_client([_|T],Nick) ->
 	self_find_client(T,Nick).
