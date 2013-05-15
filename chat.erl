@@ -11,16 +11,12 @@
 		]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
-
 -record(client, {nick, worker, room_pid}).
-
-
-
 
 %%% Client API
 create() -> 
-	Resp = gen_server:start_link(?MODULE, [], []),
-	{ok,Pid} = Resp,
+	{ok, Pid} = gen_server:start_link(?MODULE, [], []),
+	io:format("CLIENT: server started!"),
 	Pid.
 
 login(Pid, Nick) -> 
@@ -29,17 +25,17 @@ login(Pid, Nick) ->
 	if Logged =:= true ->
 		   %save worker pid
 			gen_server:cast(Pid, {save_worker, Nick, Resp}),
-			io:format("Client logged.~n",[]);
+			io:format("CLIENT: I'm logged:)~n");
 	   true ->
-		   io:format("Loging failed.")
+		   io:format("CLIENT: Loging failed:(")
 	end.
 	
 rooms(Pid) ->
 	gen_server:call(multichatapp, rooms).
-	%[io:format("Room '~p' (on ~p)~n",[R#room.name, R#room.pid]) || R <- Rooms].
+	%[io:format("Room '~p' (on ~p)~n", [R#room.name, R#room.pid]) || R <- Rooms].
 
-make_room(Pid, Name) ->
-	gen_server:call(Pid,{make_room, Name}).
+make_room(Pid, RoomName) ->
+	gen_server:call(Pid, {new_room, RoomName}).
 
 enter(Pid, RoomName) ->
 	gen_server:call(Pid, {enter, RoomName}).
@@ -60,33 +56,31 @@ die(Pid) ->
 	gen_server:call(Pid, terminate).
 
 %%% Server functions
-init([]) -> 
-	{ok, make_client()}. 
+init([]) -> {ok, make_client()}. 
 
-handle_call({make_room, RoomName}, _From, Client) ->
-	io:format("Creating room ~p~n",[RoomName]),
-	Resp = gen_server:call(Client#client.worker, {make_room,RoomName}),
+handle_call({new_room, RoomName}, _From, Client) ->
+	io:format("CLIENT: Creating room ~p~n",[RoomName]),
+	Resp = gen_server:call(Client#client.worker, {new_room, RoomName}),
 	{reply, Resp, Client}; 
 handle_call({enter, RoomName}, _From, Client) ->
-	Resp = gen_server:call(Client#client.worker, {enter_room,RoomName,Client#client.nick}),
-	NewClient = make_client(Client#client.nick,Client#client.worker,Resp),
-	{reply, Resp, NewClient}; 
+	Resp = gen_server:call(Client#client.worker, {enter_room, RoomName, Client#client.nick}),
+	{reply, Resp, make_client(	Client#client.nick, 
+								Client#client.worker, 
+								Resp)};
+	 
 handle_call(terminate, _From, Client) ->
 	{stop, normal, ok, Client}.	
 
 handle_cast({save_worker, Nick, WorkerPid}, _Client) ->
-	NewClient = make_client(Nick,WorkerPid,0),
-	io:format("Worker assigned!~n",[]),
-	{noreply, NewClient}.
+	io:format("CLIENT: Worker assigned!~n"),
+	{noreply, make_client(Nick, WorkerPid, 0)}.
 
 handle_info(Msg, Client) ->
-	io:format("Unexpected message: ~p~n",[Msg]),
+	io:format("CLIENT: Unexpected message: ~p~n",[Msg]),
 	{noreply, Client}.
-
 terminate(normal, _) ->
-	io:format("client server is hutting down...!~n",[]),
+	io:format("CLIENT: terminate~n"),
 	ok.
-
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 

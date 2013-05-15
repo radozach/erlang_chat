@@ -4,18 +4,15 @@
 -date("1.4.2013").
 -record(user, {nick, pid}).
 -record(room, {name, pid, users}).
--record(worker, {mypid, mainpid, users, rooms}).
+-record(worker, {mypid, mainpid, backup, users, rooms}).
 -export([
-%		create/1,
+%		create/1,     % is called by mainserver
 		sendtouser/3,
 		die/1	
 		]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 %%% Client API
-%create(ParentPid) -> 
-%	gen_server:start_link(?MODULE, ParentPid, []).
-	
 sendtouser(MyPid, ToNick, Msg) ->
 	% ToPid = getPid(ToNick), 
 	gen_server:call(MyPid, {message, MyPid, ToNick, Msg}).
@@ -24,16 +21,14 @@ die(MyPid) ->
 	gen_server:call(MyPid, terminate).
 
 %%% Server functions
-init(ParentPid) ->
-	MyPid = self(), 
-	{ok, make_worker(MyPid, ParentPid, [], [])}. 
+init(ParentPid) -> {ok, make_worker(self(), ParentPid, false, [], [])}. 
  
 % receive message
 handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when ToPid =:= Worker#worker.mypid ->
 	% todo = zistit nick pidu odkial prisla sprava (opytat sa servera ak nemam ulozeneho)
 	% FromNick = getNick(FromPid),
 	FromNick = noname,
-	io:format("Received msg (from ~p): ~p~n",[FromNick,Msg]),
+	io:format("Received msg (from ~p): ~p~n", [FromNick, Msg]),
 	{reply, Worker, Worker};
 % send message
 handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when FromPid =:= Worker#worker.mypid ->
@@ -41,91 +36,85 @@ handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when FromPid =:= Work
 	% ToPid = getPid(ToPid),
 	ToPid = 5,
 	%gen_server:call(ToPid, {message, MyPid, ToPid, Msg}),
-	io:format("Msg sent (to ~p)! ~p~n",[ToPid, Msg]),
+	io:format("Msg sent (to ~p)! ~p~n", [ToPid, Msg]),
 	{reply, Worker, Worker};
 	
-handle_call({enter_room,RoomName,UserNick}, _From, Worker) ->
-	R = get_room(Worker,RoomName),
-	if R =:= false ->
-			
-			RoomPid = gen_server:call(multichatapp,{whereroom,RoomName}),
-			NewWorker = Worker;
+handle_call({enter_room, RoomName, UserNick}, _From, Worker) ->
+	Room = find_room(Worker#worker.rooms, RoomName),
+	if Room =:= false ->
+			% tento worker este nekomunikoval s miestnostou 
+			RoomPid = gen_server:call(multichatapp, {whereroom, RoomName});
 		true ->
-			RoomPid = R#room.pid,
-			NewWorker = Worker
+			RoomPid = Room#room.pid
 	end,
-	io:format("Room at ~p~n",[RoomPid]),
-	gen_server:cast(RoomPid,{user_entered,RoomName,UserNick}),
-	{reply, RoomPid, NewWorker};
-	
-
+	gen_server:cast(RoomPid, {add_user_to_room, RoomName, make_user(UserNick, self())}),
+	{reply, RoomPid, Worker};
 							
-handle_call({make_room,RoomName}, _From, Worker) ->
-	Room = make_room(RoomName,[]),
-	io:format("Room createeeed"),
-	gen_server:call(multichatapp,{newroomonpid, RoomName, Worker#worker.mypid}),
+handle_call({new_room, RoomName}, _From, Worker) ->
+	Room = make_room(RoomName, self(), []),
+	gen_server:call(multichatapp, {newroomonpid, RoomName, Worker#worker.mypid}),
 	{reply, ok, make_worker(Worker#worker.mypid,
 							Worker#worker.mainpid,
+							Worker#worker.backup,
 							Worker#worker.users,
 							[Room|Worker#worker.rooms])};
-
 
 handle_call(terminate, _From, Worker) ->
 	{stop, normal, ok, Worker}.	
 
-handle_cast({user_entered,RoomName,UserNick},Worker) ->
-	io:format("tu ~p~n",[self()]),
-	Room = find_room(Worker#worker.rooms,RoomName),
-	io:format("Room ~p~n",[Room]),
-	NewRoom = make_room(Room#room.name,[UserNick|Room#room.users]),
-	NewRooms = update_room(Worker#worker.rooms,[],NewRoom),
-	io:format("Worker register user in room~n"),
-	{noreply,make_worker(Worker#worker.mypid,
+handle_cast({add_user_to_room, RoomName, User}, Worker) ->
+	%io:format("tu ~p~n", [self()]),
+	Room = find_room(Worker#worker.rooms, RoomName),
+	NewRoom = make_room(Room#room.name, self(), [Room#room.users|User]),
+	io:format("User ~p entered ~p room~n", [User#user.nick, RoomName]),
+	{noreply, make_worker(Worker#worker.mypid,
 							Worker#worker.mainpid,
+							Worker#worker.backup,
 							Worker#worker.users,
-							NewRooms)};
+							update_room(Worker#worker.rooms, NewRoom))};
 
 handle_cast(_, Worker) ->
-	io:format("empty cast!~n",[]),
+	io:format("empty cast!~n", []),
 	{noreply, Worker}.
 	
 handle_info(Msg, Worker) ->
-	io:format("Unexpected message: ~p~n",[Msg]),
+	io:format("WORKER: Unexpected message: ~p~n", [Msg]),
 	{noreply, Worker}.
-
-terminate(normal, Worker) ->
-	io:format("Worker is shutting down...!~n",[]),
+terminate(normal, _) ->
+	io:format("Worker is shutting down...!~n"),
 	ok.
-
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %%% Private functions
-make_room(Name,Users) ->
-	io:format("NEW room ~n",[]),
-	#room{name=Name, pid=self(), users=Users}.
-
-update_room([],A,_) ->
-	A;
-update_room([H|T],A,R) when H#room.name =:= R#room.name ->
-	update_room(T,[R|A],R);
-update_room([H|T],A,R) ->
-	update_room(T,[H|A],R).
-
-make_worker(MyPid, ServerPid, Users, Rooms) ->
-	#worker{mypid=MyPid, mainpid=ServerPid, users=Users, rooms=Rooms}.
+make_worker(MyPid, ServerPid, Backup, Users, Rooms) ->
+	#worker{mypid	= MyPid, 
+			mainpid	= ServerPid,
+			backup	= Backup, 
+			users	= Users, 
+			rooms	= Rooms}.
+			
+make_user(Nick, Pid) ->
+	#user{nick=Nick, pid=Pid}.
 	
+make_room(Name, Pid, Users) ->
+	#room{name=Name, pid=Pid, users=Users}.
 
-get_room(Worker,RM) ->
-	find_room(Worker#worker.rooms,RM).
+update_room(List, Room) ->
+	update_room(List, [], Room).
 	
+update_room([], Acc, _) -> Acc;
+update_room([H|T], Acc, Room) when H#room.name =:= Room#room.name ->
+	[[Acc|Room]|T];
+update_room([H|T], Acc, Room) ->
+	update_room(T, [Acc|H], Room).
 
 find_room([],_) ->
 	false;
-find_room([R|_],RM) when R#room.name =:= RM ->
+find_room([R|_], RoomName) when R#room.name =:= RoomName ->
 	R;
-find_room([_|T],RM) ->
-	find_room(T,RM).
+find_room([_|T], RoomName) ->
+	find_room(T, RoomName).
 
 	
 
