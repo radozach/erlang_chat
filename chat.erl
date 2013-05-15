@@ -11,7 +11,7 @@
 		]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(room, {name, pid}).
+-record(room, {name, pid, users, msgs=[]}).
 -record(client, {nick, worker, room=false}).
 
 %%% Client API
@@ -97,6 +97,11 @@ handle_call({msg, ToNick, Msg}, _From, Client) ->
 
 handle_call(terminate, _From, Client) ->
 	{stop, normal, ok, Client}.	
+
+
+handle_cast({notif_room_update, Room}, Client) ->
+	io:format("CLIENT: Room msgs:~n~p~n",Room#),
+	{noreply, Client};
 
 handle_cast({save_worker, Nick, WorkerPid}, _Client) ->
 	io:format("CLIENT: Worker assigned!~n"),
