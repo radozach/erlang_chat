@@ -21,7 +21,7 @@ create() ->
 	Pid.
 
 login(Pid, Nick) -> 
-	gen_server:call(Pid,{login, Nick}).
+	gen_server:call(Pid, {login, Nick}).
 	
 rooms(Pid) ->
 	gen_server:call(multichatapp, rooms).
@@ -40,10 +40,10 @@ exit() ->
 	todo.
 
 send(Pid,Msg) ->
-	gen_server:call(Pid, {room_msg,Msg}).
+	gen_server:call(Pid, {room_msg, Msg}).
 
-msg(Pid, To, Msg) ->
-	todo.
+msg(Pid, ToNick, Msg) ->
+	gen_server:call(Pid, {msg, ToNick, Msg}).
  
 die(Pid) ->
 	gen_server:call(Pid, terminate).
@@ -51,7 +51,7 @@ die(Pid) ->
 %%% Server functions
 init([]) -> {ok, make_client()}. 
 
-handle_call({login, Nick},_From,Client) ->
+handle_call({login, Nick}, _From, Client) ->
 	Resp = gen_server:call(multichatapp, {login, Nick}),
 	Logged = check_login(Resp),
 	if Logged =:= true ->
@@ -61,7 +61,7 @@ handle_call({login, Nick},_From,Client) ->
 	   true ->
 		   io:format("CLIENT: Loging failed:(")
 	end,
-	{reply,ok,Client};
+	{reply, ok, Client};
 
 handle_call({new_room, RoomName}, _From, Client) ->
 	io:format("CLIENT: Creating room ~p~n",[RoomName]),
@@ -85,8 +85,14 @@ handle_call({room_msg, Msg}, _From, Client) ->
 			io:format("Not in room!~n");
 		true ->
 			R = Client#client.room,
-			gen_server:cast(R#room.pid, {room_msg,Client#client.nick,R#room.name,Msg})
+			gen_server:cast(R#room.pid, {room_msg, Client#client.nick, R#room.name,Msg})
 	end,
+	{reply, ok, Client};
+	
+handle_call({msg, ToNick, Msg}, _From, Client) ->
+	PrivateMsg = io:format("[~p] ~p~n",[Client#client.nick, Msg]),
+	gen_server:cast(Client#client.worker, {message, ToNick, PrivateMsg}),
+	io:format("CLIENT: message '~p' sent to user '~p' from user '~p'~n",[Msg, ToNick, Client#client.nick]),
 	{reply, ok, Client};
 
 handle_call(terminate, _From, Client) ->
@@ -94,7 +100,11 @@ handle_call(terminate, _From, Client) ->
 
 handle_cast({save_worker, Nick, WorkerPid}, _Client) ->
 	io:format("CLIENT: Worker assigned!~n"),
-	{noreply, make_client(Nick, WorkerPid, false)}.
+	{noreply, make_client(Nick, WorkerPid, false)};
+handle_cast({message, Msg}, Client) ->
+	io:format("CLIENT: private msg received!~n"),
+	io:format("~p~n",[Msg]),
+	{noreply, Client}.
 
 handle_info(Msg, Client) ->
 	io:format("CLIENT: Unexpected message: ~p~n",[Msg]),

@@ -33,14 +33,6 @@ handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when ToPid =:= Worker
 	FromNick = noname,
 	io:format("Received msg (from ~p): ~p~n", [FromNick, Msg]),
 	{reply, Worker, Worker};
-% send message
-handle_call({message, FromPid, ToPid, Msg}, _From, Worker) when FromPid =:= Worker#worker.mypid ->
-	% todo = vytiahnut pid z mojej databazy
-	% ToPid = getPid(ToPid),
-	ToPid = 5,
-	%gen_server:call(ToPid, {message, MyPid, ToPid, Msg}),
-	io:format("Msg sent (to ~p)! ~p~n", [ToPid, Msg]),
-	{reply, Worker, Worker};
 	
 handle_call({enter_room, RoomName, UserNick}, _From, Worker) ->
 	Room = find_room(Worker#worker.rooms, RoomName),
@@ -96,9 +88,19 @@ handle_cast({room_msg,Nick,RName,Msg}, Worker) ->
 							Worker#worker.backup,
 							Worker#worker.users,
 							update_room(Worker#worker.rooms, NRoom))};
+							
+handle_cast({message, ToNick, Msg}, Worker) ->
+	ToPid = getPid(Worker#worker.users, ToNick),
+	if ToPid =:= false ->
+			io:format("WORKER: cannot find user~n");
+		true ->
+			io:format("WORKER: msg sent to recipient (~p)!~n", [ToPid]),
+			gen_server:cast(ToPid, {message, Msg})
+	end,
+	{noreply, Worker};
 
 handle_cast(_, Worker) ->
-	io:format("empty cast!~n", []),
+	io:format("empty cast!~n"),
 	{noreply, Worker}.
 	
 handle_info(Msg, Worker) ->
@@ -126,6 +128,13 @@ make_room(Name, Pid, Users, Msgs) ->
 	
 make_msg(From,To,Text) ->
 	#msg{ufrom=From, uto=To, text=Text}.
+
+getPid([], _) -> false;
+getPid([H|_], UserNick) when H#user.nick =:= UserNick ->
+	H#user.pid;
+getPid([_|T], UserNick) ->
+	getPid(T, UserNick).
+
 
 update_room(List, Room) ->
 	update_room(List, [], Room).

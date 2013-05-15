@@ -66,13 +66,15 @@ handle_call({login, Nick}, From, Server) ->
 											Server#server.workers),
 					NewWorker = WorkerPid
 			end,
+			{Pid, _} = From,
+			gen_server:cast(NewWorker, {register_new_client, Pid, Nick}),
 			io:format("MASTER: User ~p logged! ~n", [Nick]);
 		true ->
 			io:format("MASTER: I am already logged!~n"),
 			NewWorker = MyPid,
 			NewServer = Server
 	end,
-	gen_server:cast(NewWorker,{register_new_client, From,Nick}),
+	
 	{reply, NewWorker, NewServer};
 	
 handle_call(users, _From, Server) ->
