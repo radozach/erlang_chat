@@ -12,6 +12,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -record(room, {name, pid, users, msgs=[]}).
+-record(msg, {ufrom, uto, text}).
 -record(client, {nick, worker, room=false}).
 
 %%% Client API
@@ -100,7 +101,8 @@ handle_call(terminate, _From, Client) ->
 
 
 handle_cast({notif_room_update, Room}, Client) ->
-	io:format("CLIENT: Room msgs:~n~p~n",Room#room.msgs),
+	%io:format("CLIENT: Room msgs:~n~p~n",Room#room.msgs),
+	print_msgs(Room#room.msgs),
 	{noreply, Client};
 
 handle_cast({save_worker, Nick, WorkerPid}, _Client) ->
@@ -132,6 +134,12 @@ check_login(false) ->
 	false;
 check_login(_) ->
 	true.
+	
+print_msgs([]) ->
+	io:format("~n");
+print_msgs([M|T]) ->
+	io:format("From ~p : ~p~n", [M#msg.ufrom, M#msg.text]),
+	print_msgs(T).
 
 
 
