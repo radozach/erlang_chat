@@ -90,7 +90,7 @@ handle_cast({room_msg,Nick,RName,Msg}, Worker) ->
 							Worker#worker.users,
 							update_room(Worker#worker.rooms, NRoom))};
 							
-<<<<<<< HEAD
+
 handle_cast({message, ToNick, Msg}, Worker) ->
 	ToPid = getPid(Worker#worker.users, ToNick),
 	if ToPid =:= false ->
@@ -100,7 +100,7 @@ handle_cast({message, ToNick, Msg}, Worker) ->
 			gen_server:cast(ToPid, {message, Msg})
 	end,
 	{noreply, Worker};
-=======
+
 handle_cast({notif_room,Nick,Room}, Worker) ->
 	U = self_find_client(Worker#worker.users,Nick),
 	io:format("WORKER: NewRoom FOR ~p~n",[U]),
@@ -108,7 +108,7 @@ handle_cast({notif_room,Nick,Room}, Worker) ->
 		gen_server:cast(U#user.pid,{notif_room_update, Room})
 	end,
 	{noreply,Worker};
->>>>>>> new room msg notification
+
 
 handle_cast(_, Worker) ->
 	io:format("empty cast!~n"),
