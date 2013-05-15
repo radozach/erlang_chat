@@ -90,11 +90,12 @@ handle_cast({room_msg,Nick,RName,Msg}, Worker) ->
 							Worker#worker.users,
 							update_room(Worker#worker.rooms, NRoom))};
 							
-
 handle_cast({message, ToNick, Msg}, Worker) ->
 	ToPid = getPid(Worker#worker.users, ToNick),
 	if ToPid =:= false ->
-			io:format("WORKER: cannot find user~n");
+			%user je na inom workerovi
+			ToWorker = gen_server:call(multichatapp, {wherenick, ToNick}),
+			gen_server:cast(ToWorker, {message, ToNick, Msg});
 		true ->
 			io:format("WORKER: msg sent to recipient (~p)!~n", [ToPid]),
 			gen_server:cast(ToPid, {message, Msg})
@@ -108,7 +109,6 @@ handle_cast({notif_room,Nick,Room}, Worker) ->
 		gen_server:cast(U#user.pid,{notif_room_update, Room})
 	end,
 	{noreply,Worker};
-
 
 handle_cast(_, Worker) ->
 	io:format("empty cast!~n"),
