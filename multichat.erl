@@ -48,7 +48,7 @@ stop(Pid) ->
 init([]) -> {ok, make_server([],[],[])}. %% no treatment of info here!
 
   
-handle_call({login, Nick}, _From, Server) ->
+handle_call({login, Nick}, From, Server) ->
 	MyPid = logged(Server#server.users, Nick),
 	if MyPid =:= false ->
 			% i am not logged already
