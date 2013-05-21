@@ -42,7 +42,7 @@ handle_call({enter_room, RoomName, UserNick}, _From, Worker) ->
 		true ->
 			RoomPid = Room#room.pid
 	end,
-	gen_server:cast(RoomPid, {add_user_to_room, RoomName, make_user(UserNick, self())}),
+	gen_server:cast(RoomPid, {add_user_to_room, RoomName, make_user(UserNick, getPid(Worker#worker.users,UserNick))}),
 	{reply, RoomPid, Worker};
 							
 handle_call({new_room, RoomName}, _From, Worker) ->
@@ -58,11 +58,11 @@ handle_call(terminate, _From, Worker) ->
 	{stop, normal, ok, Worker}.	
 
 handle_cast({register_new_client, CPid,Nick}, Worker) ->
-	U = make_user(Nick,CPid),
+	NUsers = updateUserPid(Worker#worker.users, Nick, CPid),
 	NWorker = make_worker(Worker#worker.mypid,
 							Worker#worker.mainpid,
 							Worker#worker.backup,
-							[U|Worker#worker.users],
+							NUsers,
 							Worker#worker.rooms),
 	io:format("WORKER: register user ... ~p~n",[NWorker]),
 	{noreply, NWorker};
@@ -78,10 +78,20 @@ handle_cast({add_user_to_room, RoomName, User}, Worker) ->
 							Worker#worker.users,
 							update_room(Worker#worker.rooms, NewRoom))};
 							
+handle_cast({exit_room, RoomName, Nick}, Worker) ->
+	Room = find_room(Worker#worker.rooms, RoomName),
+	NewRoom = deleteUserFromRoom(Room,Nick),
+	io:format("WORKER: [~p] left room [~p]~n",[Nick,RoomName]),
+	{noreply, make_worker(Worker#worker.mypid,
+							Worker#worker.mainpid,
+							Worker#worker.backup,
+							Worker#worker.users,
+							update_room(Worker#worker.rooms, NewRoom))};
+							
 handle_cast({room_msg,Nick,RName,Msg}, Worker) ->
 	io:format("Room Msg incoming to ~p~n",[Worker]),
 	Room = find_room(Worker#worker.rooms,RName),
-	io:format("Room Msg incoming to ~p~n",[Room]),
+	%io:format("Room Msg incoming to ~p~n",[Room]),
 	NRoom = add_room_msg(Room,make_msg(Nick,room,Msg)),
 	notify_room(NRoom),
 	{noreply, make_worker(Worker#worker.mypid,
@@ -90,15 +100,16 @@ handle_cast({room_msg,Nick,RName,Msg}, Worker) ->
 							Worker#worker.users,
 							update_room(Worker#worker.rooms, NRoom))};
 							
-handle_cast({message, ToNick, Msg}, Worker) ->
+handle_cast({message, ToNick, FromNick, Msg}, Worker) ->
 	ToPid = getPid(Worker#worker.users, ToNick),
 	if ToPid =:= false ->
 			%user je na inom workerovi
+			io:format("WORKER: User (~p) is on another worker!~n", [ToPid]),
 			ToWorker = gen_server:call(multichatapp, {wherenick, ToNick}),
-			gen_server:cast(ToWorker, {message, ToNick, Msg});
+			gen_server:cast(ToWorker, {message, ToNick, FromNick, Msg});
 		true ->
 			io:format("WORKER: msg sent to recipient (~p)!~n", [ToPid]),
-			gen_server:cast(ToPid, {message, Msg})
+			gen_server:cast(ToPid, {message, FromNick, Msg})
 	end,
 	{noreply, Worker};
 
@@ -187,10 +198,36 @@ self_find_client([_|T],Nick) ->
 notify_room_users([],Room) ->
 	ok;
 notify_room_users([U|T],Room) ->
-	gen_server:cast(U#user.pid,{notif_room,U#user.nick,Room}),
+	%gen_server:cast(U#user.pid,{notif_room,U#user.nick,Room}),
+	gen_server:cast(U#user.pid,{notif_room_update, Room}),
 	notify_room_users(T,Room).
 	
 notify_room(Room) ->
 	notify_room_users(Room#room.users,Room).
+	
+updateUserPid(Users, Nick, NPid) ->
+	updateUserPid(Users, Nick, NPid, []).	
+
+updateUserPid([], Nick, NPid, Acc) ->
+	Acc ++ [make_user(Nick,NPid)];
+updateUserPid([U|T], Nick, NPid, Acc) when U#user.nick =:= Nick ->
+	A = Acc ++ [make_user(Nick,NPid)],
+	A ++ T;
+updateUserPid([U|T], Nick, NPid, Acc) ->
+	updateUserPid(T, Nick, NPid, Acc ++ [U]).
 
 
+deleteUserFromRoom(Room,Nick) ->
+	Users = deleteUserFromRoom(Room#room.users,Nick,[]),
+	make_room(Room#room.name,
+				Room#room.pid,
+				Users,
+				Room#room.msgs).
+	
+deleteUserFromRoom([],_Nick,Acc) ->
+		Acc;
+deleteUserFromRoom([U|T],Nick,Acc) when U#user.nick =:= Nick ->
+	Acc ++ T;
+deleteUserFromRoom([U|T],Nick,Acc) ->
+	deleteUserFromRoom(T,Nick,Acc ++ [U]).
+	

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+cd ~/Documents/school/_2.ing/DPrS/Chat/erlang_chat/
+erl -sname master -setcookie 123 -s multichat start
+
+
+

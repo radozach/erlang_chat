@@ -6,7 +6,7 @@
 		login/2,
 		rooms/1,
 		users/1,
-		enter/2, exit/0, make_room/2,	
+		enter/2, exit/1, make_room/2,	
 		msg/3, send/2
 		]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -37,8 +37,8 @@ enter(Pid, RoomName) ->
 users(Pid) ->
 	gen_server:call(multichatapp, users).
 
-exit() ->
-	todo.
+exit(Pid) ->
+	gen_server:cast(Pid, exit_room).
 
 send(Pid,Msg) ->
 	gen_server:call(Pid, {room_msg, Msg}).
@@ -70,6 +70,15 @@ handle_call({new_room, RoomName}, _From, Client) ->
 	{reply, Resp, Client}; 
 	
 handle_call({enter, RoomName}, _From, Client) ->
+
+	Room = Client#client.room,
+	if Room =/= false ->
+			gen_server:cast(Room#room.pid, {exit_room, Room#room.name, Client#client.nick}),
+			io:format("CLIENT: leaving room...~n");
+		true ->
+			io:format("~n")
+	end,
+	
 	Resp = gen_server:call(Client#client.worker, {enter_room, RoomName, Client#client.nick}),
 	if Resp =:= false ->
 			{reply, Resp, make_client(	Client#client.nick, 
@@ -91,13 +100,14 @@ handle_call({room_msg, Msg}, _From, Client) ->
 	{reply, ok, Client};
 	
 handle_call({msg, ToNick, Msg}, _From, Client) ->
-	PrivateMsg = io:format("[~p] ~p~n",[Client#client.nick, Msg]),
-	gen_server:cast(Client#client.worker, {message, ToNick, PrivateMsg}),
+	%PrivateMsg = io:format("[~p] ~p~n",[Client#client.nick, Msg]),
+	gen_server:cast(Client#client.worker, {message, ToNick, Client#client.nick, Msg}),
 	io:format("CLIENT: message '~p' sent to user '~p' from user '~p'~n",[Msg, ToNick, Client#client.nick]),
 	{reply, ok, Client};
 
 handle_call(terminate, _From, Client) ->
 	{stop, normal, ok, Client}.	
+
 
 
 handle_cast({notif_room_update, Room}, Client) ->
@@ -108,9 +118,21 @@ handle_cast({notif_room_update, Room}, Client) ->
 handle_cast({save_worker, Nick, WorkerPid}, _Client) ->
 	io:format("CLIENT: Worker assigned!~n"),
 	{noreply, make_client(Nick, WorkerPid, false)};
-handle_cast({message, Msg}, Client) ->
+
+handle_cast(exit_room, Client) ->
+	Room = Client#client.room,
+	if Room =/= false ->
+			gen_server:cast(Room#room.pid, {exit_room, Room#room.name, Client#client.nick}),
+			io:format("CLIENT: leaving room...~n");
+		true ->
+			io:format("CLIENT: not in room!~n")
+	end,
+	{noreply, make_client(Client#client.nick, Client#client.worker, false)};
+		
+	
+handle_cast({message, FromNick, Msg}, Client) ->
 	io:format("CLIENT: private msg received!~n"),
-	io:format("~p~n",[Msg]),
+	io:format("[~p]: ~p~n",[FromNick,Msg]),
 	{noreply, Client}.
 
 handle_info(Msg, Client) ->
