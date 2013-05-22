@@ -11,7 +11,8 @@
 		]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(room, {name, pid, users, msgs=[]}).
+-record(user, {nick, pid}).
+-record(room, {name, pid, users=[], msgs=[]}).
 -record(msg, {ufrom, uto, text}).
 -record(client, {nick, worker, room=false}).
 
@@ -25,8 +26,8 @@ login(Pid, Nick) ->
 	gen_server:call(Pid, {login, Nick}).
 	
 rooms(Pid) ->
-	gen_server:call(multichatapp, rooms).
-	%[io:format("Room '~p' (on ~p)~n", [R#room.name, R#room.pid]) || R <- Rooms].
+	Rooms = gen_server:call(multichatapp, rooms),
+	[io:format("Room '~p' (on worker ~p)~n", [R#room.name, R#room.pid]) || R <- Rooms].
 
 make_room(Pid, RoomName) ->
 	gen_server:call(Pid, {new_room, RoomName}).
@@ -35,7 +36,8 @@ enter(Pid, RoomName) ->
 	gen_server:call(Pid, {enter, RoomName}).
 	
 users(Pid) ->
-	gen_server:call(multichatapp, users).
+	Users = gen_server:call(multichatapp, users),
+	[io:format("User '~p' (on ~p)~n", [U#user.nick, U#user.pid]) || U <- Users].
 
 exit(Pid) ->
 	gen_server:cast(Pid, exit_room).

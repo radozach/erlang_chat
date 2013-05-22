@@ -5,7 +5,7 @@
 
 
 -record(user, {nick, pid}).
--record(room, {name, pid}).
+-record(room, {name, pid, users=[], msgs=[]}).
 -record(worker, {limit=2, pid}).
 -record(server,  {users=[], rooms=[], workers=[], backup}).
 
@@ -80,10 +80,10 @@ handle_call({login, Nick}, From, Server) ->
 	
 handle_call(users, _From, Server) ->
 	AllUsers = [io:format("User '~p' (on ~p)~n",[U#user.nick, U#user.pid]) || U <- Server#server.users],
-	{reply, AllUsers, Server};
+	{reply, Server#server.users, Server};
 handle_call(rooms, _From, Server) ->
 	AllRooms = [io:format("Room '~p' (on ~p)~n",[R#room.name, R#room.pid]) || R <- Server#server.rooms],
-	{reply, AllRooms, Server};
+	{reply, Server#server.rooms, Server};
 
 handle_call({newroomonpid, Name, OnPid}, _From, Server) ->
 	io:format("MASTER: New room (~p) registered~n", [Name]),
