@@ -116,6 +116,7 @@ handle_info(Msg, Server) ->
 	
 terminate(normal, _) ->
 	io:format("MASTER: terminate (normal)~n"),
+	start(),
 	ok;
 terminate(_, _) ->
   	io:format("MASTER: terminate~n"),
